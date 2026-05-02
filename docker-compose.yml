@@ -1,0 +1,109 @@
+services:
+  pg-primary:
+    image: bitnami/postgresql:16
+    container_name: ${COMPOSE_PROJECT_NAME}_pg_primary
+    environment:
+      POSTGRESQL_POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRESQL_USERNAME: ${APP_DB_USER}
+      POSTGRESQL_PASSWORD: ${APP_DB_PASSWORD}
+      POSTGRESQL_DATABASE: ${APP_DB_NAME}
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: ${REPLICATION_USER}
+      POSTGRESQL_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_primary_data:/bitnami/postgresql
+      - ./sql/01_app_init.sql:/docker-entrypoint-initdb.d/01_app_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - siera-net
+
+  pg-replica1:
+    image: bitnami/postgresql:16
+    container_name: ${COMPOSE_PROJECT_NAME}_pg_replica1
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    environment:
+      POSTGRESQL_POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: pg-primary
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: ${REPLICATION_USER}
+      POSTGRESQL_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_replica1_data:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - siera-net
+
+  pg-replica2:
+    image: bitnami/postgresql:16
+    container_name: ${COMPOSE_PROJECT_NAME}_pg_replica2
+    depends_on:
+      pg-primary:
+        condition: service_healthy
+    environment:
+      POSTGRESQL_POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD}
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: pg-primary
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: ${REPLICATION_USER}
+      POSTGRESQL_REPLICATION_PASSWORD: ${REPLICATION_PASSWORD}
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_replica2_data:/bitnami/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - siera-net
+
+  pg-vector:
+    image: pgvector/pgvector:pg16
+    container_name: ${COMPOSE_PROJECT_NAME}_pg_vector
+    environment:
+      POSTGRES_DB: ${VECTOR_DB_NAME}
+      POSTGRES_USER: ${VECTOR_DB_USER}
+      POSTGRES_PASSWORD: ${VECTOR_DB_PASSWORD}
+    ports:
+      - "55432:5432"
+    volumes:
+      - pg_vector_data:/var/lib/postgresql/data
+      - ./sql/02_vector_init.sql:/docker-entrypoint-initdb.d/02_vector_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${VECTOR_DB_USER} -d ${VECTOR_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - siera-net
+
+volumes:
+  pg_primary_data:
+    name: ${COMPOSE_PROJECT_NAME}_pg_primary_data
+  pg_replica1_data:
+    name: ${COMPOSE_PROJECT_NAME}_pg_replica1_data
+  pg_replica2_data:
+    name: ${COMPOSE_PROJECT_NAME}_pg_replica2_data
+  pg_vector_data:
+    name: ${COMPOSE_PROJECT_NAME}_pg_vector_data
+
+networks:
+  siera-net:
+    driver: bridge
+
